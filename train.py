@@ -31,8 +31,8 @@ data_path = r'/mnt/public/gw/SyslogData/{}/train.csv'.format(dataset_name)
 
 min_less_portion = 0.3
 
-Bert_path = r"/mnt/public/gw/LLM_model/bert-base-uncased"
-Llama_path = r"/mnt/public/gw/LLM_model/Meta-Llama-3-8B"
+Bert_path = r"/hy-tmp/model_weights/AI-ModelScope/bert-base-uncased"
+Llama_path = r"/hy-tmp/model_weights/LLM-Research/Meta-Llama-3-8B"
 
 ROOT_DIR = Path(__file__).parent
 ft_path = os.path.join(ROOT_DIR, r"ft_model_{}".format(dataset_name))
