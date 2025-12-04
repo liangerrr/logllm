@@ -1,0 +1,131 @@
+"""
+评估 HDFS 数据集
+"""
+
+import os
+import re
+from pathlib import Path
+import numpy as np
+import torch
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+import sys
+
+# 添加项目根目录到路径
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from model import LogLLM
+from customDataset import CustomDataset, CustomCollator
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+max_content_len = 100
+max_seq_len = 128
+batch_size = 32
+dataset_name = 'HDFS_v1'
+data_path = r'/hy-tmp/data/HDFS_data/test.csv'
+
+Bert_path = r"/hy-tmp/model_weights/AI-ModelScope/bert-base-uncased"
+Llama_path = r"/hy-tmp/model_weights/LLM-Research/Meta-Llama-3-8B"
+
+ROOT_DIR = Path(__file__).parent.parent
+ft_path = os.path.join(ROOT_DIR, r"ft_model_HDFS")
+
+device = torch.device("cuda:0")
+
+print("=" * 60)
+print(f"评估数据集: {dataset_name}")
+print("=" * 60)
+print(f'dataset_name: {dataset_name}')
+print(f'batch_size: {batch_size}')
+print(f'max_content_len: {max_content_len}')
+print(f'max_seq_len: {max_seq_len}')
+print(f'device: {device}')
+print(f'ft_path: {ft_path}')
+print()
+
+
+def evalModel(model, dataloader):
+    model.eval()
+
+    preds = []
+
+    with torch.no_grad():
+        for bathc_i in tqdm(dataloader, desc="推理中"):
+            inputs = bathc_i['inputs']
+            seq_positions = bathc_i['seq_positions']
+
+            inputs = inputs.to(device)
+            seq_positions = seq_positions
+
+            outputs_ids = model(inputs, seq_positions)
+            outputs = model.Llama_tokenizer.batch_decode(outputs_ids)
+
+            for text in outputs:
+                match = re.search(r'normal|anomalous', text, re.IGNORECASE)
+                if match:
+                    preds.append(match.group())
+                else:
+                    print(f'error :{text}')
+                    preds.append('')
+
+    preds_copy = np.array(preds)
+    preds = np.zeros_like(preds_copy, dtype=int)
+    preds[preds_copy == 'anomalous'] = 1
+    preds[preds_copy != 'anomalous'] = 0
+    gt = dataloader.dataset.get_label()
+
+    precision = precision_score(gt, preds, average="binary", pos_label=1)
+    recall = recall_score(gt, preds, average="binary", pos_label=1)
+    f = f1_score(gt, preds, average="binary", pos_label=1)
+    acc = accuracy_score(gt, preds)
+
+    num_anomalous = (gt == 1).sum()
+    num_normal = (gt == 0).sum()
+
+    print(f'\n{"="*60}')
+    print(f'数据集: {dataset_name}')
+    print(f'{"="*60}')
+    print(f'Number of anomalous seqs: {num_anomalous}; number of normal seqs: {num_normal}')
+
+    pred_num_anomalous = (preds == 1).sum()
+    pred_num_normal = (preds == 0).sum()
+
+    print(f'Number of detected anomalous seqs: {pred_num_anomalous}; number of detected normal seqs: {pred_num_normal}')
+
+    print(f'\n结果:')
+    print(f'  Precision: {precision:.4f}')
+    print(f'  Recall:    {recall:.4f}')
+    print(f'  F1 Score:  {f:.4f}')
+    print(f'  Accuracy:  {acc:.4f}')
+    print(f'{"="*60}\n')
+    
+    return {
+        'dataset': dataset_name,
+        'precision': precision,
+        'recall': recall,
+        'f1': f,
+        'accuracy': acc,
+        'num_anomalous': num_anomalous,
+        'num_normal': num_normal
+    }
+
+
+if __name__ == '__main__':
+    print(f'dataset: {data_path}')
+    dataset = CustomDataset(data_path)
+    model = LogLLM(Bert_path, Llama_path, ft_path=ft_path, is_train_mode=False, device=device,
+                   max_content_len=max_content_len, max_seq_len=max_seq_len)
+
+    tokenizer = model.Bert_tokenizer
+    collator = CustomCollator(tokenizer, max_seq_len=max_seq_len, max_content_len=max_content_len)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        collate_fn=collator,
+        num_workers=4,
+        shuffle=False,
+        drop_last=False
+    )
+
+    evalModel(model, dataloader)
+
