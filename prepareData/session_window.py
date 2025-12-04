@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from prepareData.helper import structure_log
 
-data_dir = r'/mnt/public/gw/SyslogData/HDFS_v1'
+data_dir = r'/hy-tmp/data/HDFS_data'
 log_name = "HDFS.log"
 
 output_dir = data_dir
